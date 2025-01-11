@@ -122,17 +122,20 @@ class SemanticContextEncoder(nn.Module):
 
         # 融合模块
         self.fusion = FusionModule()
+        # 1x1 卷积层，用于将 seg_mask 从 3 维扩展到 64 维
+        self.seg_mask_expand = nn.Conv2d(3, 64, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         # 主检测分支
         # unet_output = self.unet(x)
 
         # 语义分割分支生成语义掩码
-        seg_mask = self.segmentation_branch(x)
+        seg_mask = self.segmentation_branch(x)  # (4,3,496,432)
 
         # 特征融合
         # fused_features = self.fusion(unet_output, seg_mask)
-        fused_features = self.fusion(x, seg_mask)
+        matched_seg_mask = self.seg_mask_expand(seg_mask)  # matched_seg_mask 的形状为 (B, 64, H, W)
+        fused_features = self.fusion(x, matched_seg_mask)
         return fused_features, seg_mask
 
 class Segmask(nn.Module):
@@ -142,7 +145,7 @@ class Segmask(nn.Module):
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
         self.num_class = num_class
-        self.sce = SemanticContextEncoder(in_channels=64, out_channels=64)
+        self.sce = SemanticContextEncoder(in_channels=64, out_channels=3)
 
         # 4,64,496,432
 
@@ -657,7 +660,7 @@ class Segmask(nn.Module):
         match_box_to_bev = self.match_box_to_bev(spatial_features, gt_boxes).float()  # torch.Size([4, 3,496, 432])
         # print(torch.max(match_box_to_bev)) # 1.0
         # self.visualize_foreground_mask_on_features(spatial_features,match_box_to_bev)
-        reweighted_features, probability_map = self.sce(spatial_features)  # [4, 64, 496, 432]
+        reweighted_features, probability_map = self.sce(spatial_features)  # [4, 64, 496, 432] [4, 3, 496, 432]
 
         # self.visualize_combined(spatial_features, match_box_to_bev, gt_boxes, frame_ids, reweighted_features)
 
@@ -666,3 +669,5 @@ class Segmask(nn.Module):
         data_dict.update({'probability_map': probability_map})
 
         return data_dict
+
+
