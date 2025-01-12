@@ -123,7 +123,7 @@ class SemanticContextEncoder(nn.Module):
         # 融合模块
         self.fusion = FusionModule()
         # 1x1 卷积层，用于将 seg_mask 从 3 维扩展到 64 维
-        self.seg_mask_expand = nn.Conv2d(3, 64, kernel_size=1, stride=1, padding=0)
+        # self.seg_mask_expand = nn.Conv2d(3, 64, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         # 主检测分支
@@ -134,7 +134,9 @@ class SemanticContextEncoder(nn.Module):
 
         # 特征融合
         # fused_features = self.fusion(unet_output, seg_mask)
-        matched_seg_mask = self.seg_mask_expand(seg_mask)  # matched_seg_mask 的形状为 (B, 64, H, W)
+        # matched_seg_mask = self.seg_mask_expand(seg_mask)
+        summed = torch.sum(seg_mask, dim=1, keepdim=True) # (B,1,H,W)
+        matched_seg_mask = summed.repeat(1, 64, 1, 1) # matched_seg_mask 的形状为 (B, 64, H, W)
         fused_features = self.fusion(x, matched_seg_mask)
         return fused_features, seg_mask
 
