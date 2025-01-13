@@ -74,17 +74,17 @@ class SemanticSegmentationBranch(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-    def forward(self, x):
+    def forward(self, x): #64--->64
         # 残差块
         x = self.residual_blocks(x)
 
         # 最大池化
         x = self.maxpool1(x)
-        x = self.maxpool2(x)
+        # x = self.maxpool2(x)
 
         # 上采样
         x = self.upsample1(x)
-        x = self.upsample2(x)
+        # x = self.upsample2(x)
 
         # 卷积层
         x = F.relu(self.bn1(self.conv1(x)))
@@ -100,7 +100,7 @@ class FusionModule(nn.Module):
 
     def forward(self, features, seg_mask):
         # 特征融合：根据语义分割掩码重新加权特征图
-        return (1 + seg_mask) * features  # self.fusion(unet_output, seg_mask)
+        return features+features*seg_mask*(10^4)  #(1 + seg_mask) * features   # self.fusion(unet_output, seg_mask)
 
 
 class SemanticContextEncoder(nn.Module):
@@ -125,7 +125,7 @@ class SemanticContextEncoder(nn.Module):
         # 1x1 卷积层，用于将 seg_mask 从 3 维扩展到 64 维
         # self.seg_mask_expand = nn.Conv2d(3, 64, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, x):
+    def forward(self, x):  #(64--->3)
         # 主检测分支
         # unet_output = self.unet(x)
 
@@ -134,10 +134,11 @@ class SemanticContextEncoder(nn.Module):
 
         # 特征融合
         # fused_features = self.fusion(unet_output, seg_mask)
-        # matched_seg_mask = self.seg_mask_expand(seg_mask)
-        summed = torch.sum(seg_mask, dim=1, keepdim=True) # (B,1,H,W)
-        matched_seg_mask = summed.repeat(1, 64, 1, 1) # matched_seg_mask 的形状为 (B, 64, H, W)
+        # matched_seg_mask = self.seg_mask_expand(seg_mask)  # matched_seg_mask 的形状为 (B, 64, H, W)
+        summed = torch.sum(seg_mask, dim=1, keepdim=True)
+        matched_seg_mask = summed.repeat(1, 64, 1, 1)
         fused_features = self.fusion(x, matched_seg_mask)
+        # print("segmask:", torch.max(matched_seg_mask), torch.min(matched_seg_mask))
         return fused_features, seg_mask
 
 class Segmask(nn.Module):
@@ -552,11 +553,15 @@ class Segmask(nn.Module):
 
         fig, axs = plt.subplots(num_features_to_visualize, 4, figsize=(40, 10))
         axs = axs.flatten()  # Convert axs to 1D array for easy indexing
+        def normalize_tensor(tensor):
+            min_val = torch.min(tensor)
+            max_val = torch.max(tensor)
+            return (tensor-min_val)/(max_val-min_val)
 
         for i in range(min(num_features_to_visualize, C)):
             # Select the first batch's feature map, mask, and ground truth boxes
-            feature_map = spatial_features[0, i, :, :].cpu().detach().numpy()
-            reweighted_feature_map = reweighted_features[0,i, :, :].cpu().detach().numpy()
+            feature_map = normalize_tensor(spatial_features[0, i, :, :]).cpu().detach().numpy()
+            reweighted_feature_map = normalize_tensor(reweighted_features[0, i, :, :]).cpu().detach().numpy()
             mask = foreground_mask[0, i, :, :].cpu().detach().numpy()
             boxes = gt_boxes[0].cpu().detach().numpy()
             fig.suptitle(f'Batch {0} - Frame ID: {frame_ids[0]}')
@@ -662,7 +667,7 @@ class Segmask(nn.Module):
         match_box_to_bev = self.match_box_to_bev(spatial_features, gt_boxes).float()  # torch.Size([4, 3,496, 432])
         # print(torch.max(match_box_to_bev)) # 1.0
         # self.visualize_foreground_mask_on_features(spatial_features,match_box_to_bev)
-        reweighted_features, probability_map = self.sce(spatial_features)  # [4, 64, 496, 432] [4, 3, 496, 432]
+        reweighted_features, probability_map = self.sce(spatial_features)  # [4, 64, 496, 432]
 
         # self.visualize_combined(spatial_features, match_box_to_bev, gt_boxes, frame_ids, reweighted_features)
 
