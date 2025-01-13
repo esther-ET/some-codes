@@ -91,7 +91,8 @@ class SemanticSegmentationBranch(nn.Module):
         x = self.conv2(x)
 
         # 输出语义掩码
-        return torch.sigmoid(x)  # 使用 sigmoid 激活函数生成概率图
+
+        return torch.sigmoid(x)  # 使用 sigmoid 激活函数生成概率图 (0,1)
 
 
 class FusionModule(nn.Module):
@@ -100,7 +101,7 @@ class FusionModule(nn.Module):
 
     def forward(self, features, seg_mask):
         # 特征融合：根据语义分割掩码重新加权特征图
-        return features+features*seg_mask*(10^4)  #(1 + seg_mask) * features   # self.fusion(unet_output, seg_mask)
+        return (1 + seg_mask) * features  #(1 + seg_mask) * features   # self.fusion(unet_output, seg_mask)
 
 
 class SemanticContextEncoder(nn.Module):
@@ -136,7 +137,9 @@ class SemanticContextEncoder(nn.Module):
         # fused_features = self.fusion(unet_output, seg_mask)
         # matched_seg_mask = self.seg_mask_expand(seg_mask)  # matched_seg_mask 的形状为 (B, 64, H, W)
         summed = torch.sum(seg_mask, dim=1, keepdim=True)
-        matched_seg_mask = summed.repeat(1, 64, 1, 1)
+        # 要有这个，不然都是2-3的值，太大了。
+        normal_summed = F.sigmoid(summed)
+        matched_seg_mask = normal_summed.repeat(1, 64, 1, 1)
         fused_features = self.fusion(x, matched_seg_mask)
         # print("segmask:", torch.max(matched_seg_mask), torch.min(matched_seg_mask))
         return fused_features, seg_mask
